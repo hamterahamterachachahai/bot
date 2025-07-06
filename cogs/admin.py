@@ -185,6 +185,51 @@ class Admin(commands.Cog):
         
         await ctx.send(embed=embed, ephemeral=True)
 
+    @commands.hybrid_command(name='performance', description='Shows bot performance statistics.')
+    async def performance(self, ctx):
+        """Shows performance statistics and command usage."""
+        if not hasattr(self.bot, 'perf_tracker'):
+            await ctx.send("Performance tracking not available.", ephemeral=True)
+            return
+        
+        tracker = self.bot.perf_tracker
+        uptime_seconds = tracker.get_uptime()
+        
+        # Format uptime
+        days = int(uptime_seconds // 86400)
+        hours = int((uptime_seconds % 86400) // 3600)
+        minutes = int((uptime_seconds % 3600) // 60)
+        seconds = int(uptime_seconds % 60)
+        
+        uptime_str = f"{days}d {hours}h {minutes}m {seconds}s"
+        
+        embed = discord.Embed(
+            title="Performance Statistics",
+            color=discord.Color.green()
+        )
+        
+        embed.add_field(name="Uptime", value=uptime_str, inline=True)
+        embed.add_field(name="Commands Tracked", value=len(tracker.command_stats), inline=True)
+        
+        # Total command executions
+        total_commands = sum(stats['count'] for stats in tracker.command_stats.values())
+        embed.add_field(name="Total Executions", value=total_commands, inline=True)
+        
+        # Top commands
+        top_commands = tracker.get_top_commands(5)
+        if top_commands:
+            command_list = []
+            for cmd_name, stats in top_commands:
+                command_list.append(f"`{cmd_name}`: {stats['count']} uses ({stats['avg_time']:.2f}s avg)")
+            
+            embed.add_field(
+                name="Most Used Commands",
+                value="\n".join(command_list) or "No commands executed yet",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed, ephemeral=True)
+
 async def setup(bot):
     """Adds the Admin cog to the bot."""
     await bot.add_cog(Admin(bot))

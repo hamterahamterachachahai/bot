@@ -9,7 +9,11 @@ from discord import app_commands
 # Load environment variables from .env file
 load_dotenv()
 
-# Setup logging
+# Enhanced logging setup with performance monitoring
+import time
+from datetime import datetime
+
+# Setup enhanced logging (simplified to avoid filter issues)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -18,19 +22,94 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+
 logger = logging.getLogger(__name__)
 
-# --- CONFIGURATION ---
-TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-ALLOWED_USER_IDS = [int(user_id) for user_id in os.getenv("ALLOWED_USER_IDS", "").split(',') if user_id]
-DELAY = float(os.getenv("DM_DELAY", 1.5))
-LOG_DMS = os.getenv("LOG_DMS", "True").lower() == "true"
-ALLOWED_ROLE_IDS = {int(role_id) for role_id in os.getenv("ALLOWED_ROLE_IDS", "").split(',') if role_id}
+# Performance tracking
+class PerformanceTracker:
+    def __init__(self):
+        self.command_stats = {}
+        self.start_time = time.time()
+    
+    def track_command(self, command_name, execution_time):
+        if command_name not in self.command_stats:
+            self.command_stats[command_name] = {
+                'count': 0,
+                'total_time': 0,
+                'avg_time': 0
+            }
+        
+        stats = self.command_stats[command_name]
+        stats['count'] += 1
+        stats['total_time'] += execution_time
+        stats['avg_time'] = stats['total_time'] / stats['count']
+    
+    def get_uptime(self):
+        return time.time() - self.start_time
+    
+    def get_top_commands(self, limit=5):
+        return sorted(
+            self.command_stats.items(),
+            key=lambda x: x[1]['count'],
+            reverse=True
+        )[:limit]
 
-# Check if the bot token is set
-if not TOKEN:
-    logger.error("DISCORD_BOT_TOKEN environment variable not found in .env file.")
-    exit()
+# Initialize performance tracker
+perf_tracker = PerformanceTracker()
+
+# --- CONFIGURATION ---
+def validate_configuration():
+    """Validate and load configuration with proper error handling."""
+    token = os.getenv("DISCORD_BOT_TOKEN")
+    if not token:
+        logger.error("❌ DISCORD_BOT_TOKEN not found in .env file.")
+        logger.error("Please add your bot token to the .env file.")
+        exit(1)
+    
+    # Validate and parse allowed user IDs
+    user_ids_str = os.getenv("ALLOWED_USER_IDS", "")
+    if not user_ids_str.strip():
+        logger.error("❌ ALLOWED_USER_IDS is empty in .env file.")
+        logger.error("Please add at least one user ID to ALLOWED_USER_IDS.")
+        exit(1)
+    
+    try:
+        allowed_users = [int(user_id.strip()) for user_id in user_ids_str.split(',') if user_id.strip()]
+        if not allowed_users:
+            raise ValueError("No valid user IDs found")
+    except ValueError as e:
+        logger.error(f"❌ Invalid ALLOWED_USER_IDS format: {e}")
+        logger.error("Format should be: 123456789,987654321")
+        exit(1)
+    
+    # Parse other settings with defaults
+    try:
+        delay = float(os.getenv("DM_DELAY", 1.5))
+        if delay < 0.1:
+            logger.warning("⚠️ DM_DELAY too low, setting to 0.1 seconds")
+            delay = 0.1
+    except ValueError:
+        logger.warning("⚠️ Invalid DM_DELAY, using default 1.5 seconds")
+        delay = 1.5
+    
+    log_dms = os.getenv("LOG_DMS", "True").lower() == "true"
+    
+    # Parse role IDs (optional)
+    role_ids_str = os.getenv("ALLOWED_ROLE_IDS", "")
+    try:
+        allowed_roles = {int(role_id.strip()) for role_id in role_ids_str.split(',') if role_id.strip()}
+    except ValueError:
+        logger.warning("⚠️ Invalid ALLOWED_ROLE_IDS format, ignoring roles")
+        allowed_roles = set()
+    
+    logger.info(f"✅ Configuration loaded successfully")
+    logger.info(f"📝 Authorized users: {len(allowed_users)}")
+    logger.info(f"🎭 Authorized roles: {len(allowed_roles)}")
+    
+    return token, allowed_users, delay, log_dms, allowed_roles
+
+# Load and validate configuration
+TOKEN, ALLOWED_USER_IDS, DELAY, LOG_DMS, ALLOWED_ROLE_IDS = validate_configuration()
 
 # Configure Discord Intents
 intents = discord.Intents.default()
@@ -213,37 +292,54 @@ async def dmuser_command(ctx, target_user: discord.Member, *, message: str):
         if LOG_DMS:
             logger.error(f"Unexpected error sending DM to {target_user.name} ({target_user.id}): {e}")
 
-# --- HELP COMMAND ---
-@bot.hybrid_command(name="help", description="Shows help information for bot commands.")
+# --- ENHANCED HELP COMMAND ---
+@bot.hybrid_command(name="help", description="Shows organized help information for bot commands.")
 async def help_command(ctx, *, command_name: str = None):
-    """Custom help command with better formatting."""
+    """Enhanced help command with better organization and descriptions."""
     if command_name:
         # Show help for specific command
         cmd = bot.get_command(command_name)
         if cmd:
             embed = discord.Embed(
-                title=f"Help: {cmd.name}",
+                title=f"📖 Help: {cmd.name}",
                 description=cmd.description or "No description available.",
                 color=discord.Color.blue()
             )
             embed.add_field(name="Usage", value=f"`!{cmd.name} {cmd.signature}`", inline=False)
+            embed.add_field(name="Slash Command", value=f"`/{cmd.name} {cmd.signature}`", inline=False)
             if cmd.aliases:
                 embed.add_field(name="Aliases", value=", ".join(cmd.aliases), inline=False)
+            
+            # Add cog info
+            if cmd.cog:
+                embed.add_field(name="Category", value=cmd.cog.qualified_name, inline=True)
         else:
             embed = discord.Embed(
-                title="Command Not Found",
+                title="❌ Command Not Found",
                 description=f"No command named '{command_name}' found.",
                 color=discord.Color.red()
             )
     else:
-        # Show general help
+        # Show organized help with categories and descriptions
         embed = discord.Embed(
-            title="Bot Commands Help",
-            description="Here are all available commands. Use `!help <command>` for more details.",
+            title="🤖 Bot Commands Help",
+            description="Choose a category or use `!help <command>` for specific details.\nCommands work with both `!` and `/` prefixes.",
             color=discord.Color.blue()
         )
         
-        # Group commands by cog
+        # Define cog descriptions and emojis
+        cog_info = {
+            "Admin": ("🔧", "Bot administration and management"),
+            "Moderation": ("🛡️", "Server moderation tools"),
+            "General": ("📋", "Basic server and user information"),
+            "Fun": ("🎉", "Entertainment and random commands"), 
+            "Games": ("🎮", "Interactive games and activities"),
+            "Info": ("📊", "Bot statistics and system information"),
+            "Misc": ("🔗", "Utility tools and converters"),
+            "Utility": ("⚙️", "Advanced utilities and tools")
+        }
+        
+        # Group commands by cog with enhanced presentation
         cogs = {}
         for command in bot.commands:
             if command.cog:
@@ -255,12 +351,26 @@ async def help_command(ctx, *, command_name: str = None):
                 cogs[cog_name] = []
             cogs[cog_name].append(command.name)
         
-        for cog_name, commands_list in cogs.items():
+        # Add fields for each category
+        for cog_name, commands_list in sorted(cogs.items()):
+            emoji, description = cog_info.get(cog_name, ("📝", "Various commands"))
+            
+            # Limit commands shown per category (show first 8, then count)
+            if len(commands_list) > 8:
+                shown_commands = commands_list[:8]
+                command_text = ", ".join(f"`{cmd}`" for cmd in shown_commands)
+                command_text += f"\n... and {len(commands_list) - 8} more"
+            else:
+                command_text = ", ".join(f"`{cmd}`" for cmd in commands_list)
+            
             embed.add_field(
-                name=cog_name,
-                value=", ".join(f"`{cmd}`" for cmd in commands_list),
+                name=f"{emoji} {cog_name} ({len(commands_list)} commands)",
+                value=f"{description}\n{command_text}",
                 inline=False
             )
+        
+        # Add footer with usage info
+        embed.set_footer(text=f"Total Commands: {len(bot.commands)} | Use !help <command> for details")
     
     await ctx.send(embed=embed, ephemeral=True)
 
@@ -279,18 +389,21 @@ async def load_extensions():
         except Exception as e:
             logger.error(f"Failed to load cog {cog_name}: {e}")
 
+# --- BOT EVENTS ---
 @bot.event
 async def on_ready():
     """Called when the bot is ready and connected to Discord."""
-    logger.info(f"Logged in as {bot.user.name} (ID: {bot.user.id})")
-    logger.info(f"Bot is in {len(bot.guilds)} guild(s).")
+    logger.info(f"🚀 Bot successfully connected!")
+    logger.info(f"👤 Logged in as {bot.user.name} (ID: {bot.user.id})")
+    logger.info(f"🏠 Connected to {len(bot.guilds)} guild(s)")
     
-    # Store configuration on bot instance for cogs to access
+    # Store configuration and utilities on bot instance
     bot.allowed_user_ids = ALLOWED_USER_IDS
     bot.allowed_role_ids = ALLOWED_ROLE_IDS
     bot.check_allowed_users = check_allowed_users
     bot.check_allowed_roles = check_allowed_roles
     bot.check_user_or_role_allowed = check_user_or_role_allowed
+    bot.perf_tracker = perf_tracker
 
     # Load cogs
     await load_extensions()
@@ -298,9 +411,45 @@ async def on_ready():
     # Sync slash commands
     try:
         synced = await bot.tree.sync()
-        logger.info(f"Synced {len(synced)} global command(s).")
+        logger.info(f"⚡ Synced {len(synced)} global command(s)")
+        logger.info(f"🎯 Bot ready! Authorized users: {len(ALLOWED_USER_IDS)}")
     except Exception as e:
-        logger.error(f"Error syncing commands: {e}")
+        logger.error(f"❌ Error syncing commands: {e}")
+
+@bot.event
+async def on_disconnect():
+    """Called when the bot disconnects."""
+    logger.warning("🔌 Bot disconnected from Discord")
+
+@bot.event
+async def on_resume():
+    """Called when the bot resumes connection."""
+    logger.info("🔄 Bot reconnected to Discord")
+
+@bot.event
+async def on_command(ctx):
+    """Called before a command is executed - track performance."""
+    ctx.command_start_time = time.time()
+
+@bot.event
+async def on_command_completion(ctx):
+    """Called after a command completes - log performance."""
+    if hasattr(ctx, 'command_start_time'):
+        execution_time = time.time() - ctx.command_start_time
+        perf_tracker.track_command(ctx.command.name, execution_time)
+        
+        if execution_time > 2.0:  # Log slow commands
+            logger.warning(f"⏱️ Slow command: {ctx.command.name} took {execution_time:.2f}s")
+
+@bot.event
+async def on_guild_join(guild):
+    """Called when bot joins a new guild."""
+    logger.info(f"🏠 Joined new guild: {guild.name} (ID: {guild.id}, Members: {guild.member_count})")
+
+@bot.event
+async def on_guild_remove(guild):
+    """Called when bot leaves a guild."""
+    logger.info(f"👋 Left guild: {guild.name} (ID: {guild.id})")
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -361,9 +510,27 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
                 ephemeral=True
             )
 
+# --- GRACEFUL SHUTDOWN HANDLING ---
+import signal
+import sys
+
+def signal_handler(sig, frame):
+    """Handle shutdown signals gracefully."""
+    logger.info("🛑 Shutdown signal received, closing bot...")
+    bot.loop.create_task(bot.close())
+
+# Register signal handlers for graceful shutdown
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
 # --- RUN THE BOT ---
 if __name__ == "__main__":
     try:
+        logger.info("🚀 Starting Discord bot...")
         bot.run(TOKEN)
+    except KeyboardInterrupt:
+        logger.info("🛑 Bot shutdown requested by user")
     except Exception as e:
-        logger.error(f"Failed to start bot: {e}")
+        logger.error(f"❌ Failed to start bot: {e}")
+    finally:
+        logger.info("👋 Bot shutdown complete")
