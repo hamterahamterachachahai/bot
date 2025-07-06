@@ -114,4 +114,5 @@ Changelog:
 
 ```
 Preferred communication style: Simple, everyday language.
+Bot access restrictions: Only specific user IDs can use the bot - 1371770747692777553, 1318613193215705211, 1151217188951298138, 980130432882454578
 ```

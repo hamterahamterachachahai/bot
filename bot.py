@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-ALLOWED_USER_IDS = [int(user_id) for user_id in os.getenv("ALLOWED_USER_IDS", "").split(',') if user_id]
+# Hardcoded allowed user IDs - only these users can use the bot
+ALLOWED_USER_IDS = [1371770747692777553, 1318613193215705211, 1151217188951298138, 980130432882454578]
 DELAY = float(os.getenv("DM_DELAY", 1.5))
 LOG_DMS = os.getenv("LOG_DMS", "True").lower() == "true"
 ALLOWED_ROLE_IDS = {int(role_id) for role_id in os.getenv("ALLOWED_ROLE_IDS", "").split(',') if role_id}
@@ -39,6 +40,15 @@ intents.message_content = True
 
 # Initialize the bot with hybrid commands support
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+
+# Global check to restrict bot usage to allowed users only
+@bot.check
+async def globally_check_user(ctx):
+    """Global check that restricts all commands to allowed users only."""
+    if ctx.author.id in ALLOWED_USER_IDS:
+        return True
+    # Silently ignore commands from unauthorized users
+    return False
 
 async def send_dm_to_members(ctx, members_to_dm, message, delay, log_dms):
     """Helper function to send DMs to a list of members."""
