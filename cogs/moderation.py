@@ -57,14 +57,22 @@ class Moderation(commands.Cog):
 
         try:
             await member.kick(reason=reason)
-            embed = discord.Embed(
+            
+            # Create detailed embed for mod log
+            log_embed = discord.Embed(
                 title="Member Kicked",
                 description=f"{member.mention} has been kicked",
                 color=discord.Color.orange()
             )
-            embed.add_field(name="Reason", value=reason, inline=False)
-            embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
-            await ctx.send(embed=embed)
+            log_embed.add_field(name="Reason", value=reason, inline=False)
+            log_embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+            log_embed.add_field(name="Member ID", value=str(member.id), inline=True)
+            log_embed.add_field(name="Channel", value=ctx.channel.mention, inline=True)
+            log_embed.timestamp = datetime.utcnow()
+            
+            # Send only to mod log channel
+            await self.send_mod_log(log_embed)
+            
             logger.info(f"{ctx.author} kicked {member} for: {reason}")
         except discord.Forbidden:
             await ctx.send("I don't have permission to kick that member. Make sure my role is above theirs.", ephemeral=True)
@@ -88,14 +96,22 @@ class Moderation(commands.Cog):
 
         try:
             await member.ban(reason=reason)
-            embed = discord.Embed(
+            
+            # Create detailed embed for mod log
+            log_embed = discord.Embed(
                 title="Member Banned",
                 description=f"{member.mention} has been banned",
                 color=discord.Color.red()
             )
-            embed.add_field(name="Reason", value=reason, inline=False)
-            embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
-            await ctx.send(embed=embed)
+            log_embed.add_field(name="Reason", value=reason, inline=False)
+            log_embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+            log_embed.add_field(name="Member ID", value=str(member.id), inline=True)
+            log_embed.add_field(name="Channel", value=ctx.channel.mention, inline=True)
+            log_embed.timestamp = datetime.utcnow()
+            
+            # Send only to mod log channel
+            await self.send_mod_log(log_embed)
+            
             logger.info(f"{ctx.author} banned {member} for: {reason}")
         except discord.Forbidden:
             await ctx.send("I don't have permission to ban that member. Make sure my role is above theirs.", ephemeral=True)
@@ -122,13 +138,21 @@ class Moderation(commands.Cog):
         if found_user:
             try:
                 await ctx.guild.unban(found_user)
-                embed = discord.Embed(
+                
+                # Create detailed embed for mod log
+                log_embed = discord.Embed(
                     title="Member Unbanned",
                     description=f"{found_user.mention} has been unbanned",
                     color=discord.Color.green()
                 )
-                embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
-                await ctx.send(embed=embed)
+                log_embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+                log_embed.add_field(name="User ID", value=str(found_user.id), inline=True)
+                log_embed.add_field(name="Channel", value=ctx.channel.mention, inline=True)
+                log_embed.timestamp = datetime.utcnow()
+                
+                # Send only to mod log channel
+                await self.send_mod_log(log_embed)
+                
                 logger.info(f"{ctx.author} unbanned {found_user}")
             except discord.Forbidden:
                 await ctx.send("I don't have permission to unban that user.", ephemeral=True)
@@ -208,13 +232,21 @@ class Moderation(commands.Cog):
 
         try:
             await member.timeout(None)
-            embed = discord.Embed(
+            
+            # Create detailed embed for mod log
+            log_embed = discord.Embed(
                 title="Timeout Removed",
                 description=f"Timeout removed from {member.mention}",
                 color=discord.Color.green()
             )
-            embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
-            await ctx.send(embed=embed)
+            log_embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+            log_embed.add_field(name="Member ID", value=str(member.id), inline=True)
+            log_embed.add_field(name="Channel", value=ctx.channel.mention, inline=True)
+            log_embed.timestamp = datetime.utcnow()
+            
+            # Send only to mod log channel
+            await self.send_mod_log(log_embed)
+            
             logger.info(f"{ctx.author} removed timeout from {member}")
         except discord.Forbidden:
             await ctx.send("I don't have permission to remove timeout from that member.", ephemeral=True)
@@ -240,25 +272,41 @@ class Moderation(commands.Cog):
 
         try:
             await member.add_roles(muted_role, reason=reason)
-            embed = discord.Embed(
+            
+            # Create detailed embed for mod log
+            log_embed = discord.Embed(
                 title="Member Muted",
                 description=f"{member.mention} has been muted",
                 color=discord.Color.orange()
             )
-            embed.add_field(name="Reason", value=reason, inline=False)
-            embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+            log_embed.add_field(name="Reason", value=reason, inline=False)
+            log_embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+            log_embed.add_field(name="Member ID", value=str(member.id), inline=True)
+            log_embed.add_field(name="Channel", value=ctx.channel.mention, inline=True)
             
             if duration > 0:
-                embed.add_field(name="Duration", value=f"{duration} minutes", inline=True)
-                await ctx.send(embed=embed)
-                
+                log_embed.add_field(name="Duration", value=f"{duration} minutes", inline=True)
+            
+            log_embed.timestamp = datetime.utcnow()
+            
+            # Send only to mod log channel
+            await self.send_mod_log(log_embed)
+            
+            if duration > 0:
                 # Auto-unmute after duration
                 await asyncio.sleep(duration * 60)
                 if muted_role in member.roles:
                     await member.remove_roles(muted_role, reason="Mute duration ended.")
-                    await ctx.send(f"{member.mention} has been unmuted automatically.")
-            else:
-                await ctx.send(embed=embed)
+                    # Send auto-unmute log
+                    auto_log_embed = discord.Embed(
+                        title="Member Auto-Unmuted",
+                        description=f"{member.mention} has been automatically unmuted",
+                        color=discord.Color.green()
+                    )
+                    auto_log_embed.add_field(name="Reason", value="Mute duration ended", inline=False)
+                    auto_log_embed.add_field(name="Member ID", value=str(member.id), inline=True)
+                    auto_log_embed.timestamp = datetime.utcnow()
+                    await self.send_mod_log(auto_log_embed)
             
             logger.info(f"{ctx.author} muted {member} for: {reason}")
         except discord.Forbidden:
@@ -280,13 +328,21 @@ class Moderation(commands.Cog):
 
         try:
             await member.remove_roles(muted_role, reason="Unmuted by moderator.")
-            embed = discord.Embed(
+            
+            # Create detailed embed for mod log
+            log_embed = discord.Embed(
                 title="Member Unmuted",
                 description=f"{member.mention} has been unmuted",
                 color=discord.Color.green()
             )
-            embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
-            await ctx.send(embed=embed)
+            log_embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+            log_embed.add_field(name="Member ID", value=str(member.id), inline=True)
+            log_embed.add_field(name="Channel", value=ctx.channel.mention, inline=True)
+            log_embed.timestamp = datetime.utcnow()
+            
+            # Send only to mod log channel
+            await self.send_mod_log(log_embed)
+            
             logger.info(f"{ctx.author} unmuted {member}")
         except discord.Forbidden:
             await ctx.send("I don't have permission to manage roles.", ephemeral=True)
