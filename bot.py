@@ -140,73 +140,123 @@ async def globally_check_user(ctx):
     return False
 
 async def send_dm_to_members(ctx, members_to_dm, message, delay, log_dms):
-    """Helper function to send DMs to a list of members."""
-    total_members = len(members_to_dm)
+    """Optimized helper function to send DMs to a list of members."""
+    # Pre-filter members to exclude bots and self
+    eligible_members = [
+        member for member in members_to_dm 
+        if not member.bot and member != bot.user
+    ]
+    
+    total_members = len(eligible_members)
+    skipped_bots = len(members_to_dm) - total_members
+    
     if total_members == 0:
+        response = "No eligible members found for DM (all members are bots or the bot itself)."
         if hasattr(ctx, 'send'):
-            await ctx.send("No eligible members found for DM.", ephemeral=True)
+            await ctx.send(response, ephemeral=True)
         else:
-            await ctx.followup.send("No eligible members found for DM.", ephemeral=True)
+            await ctx.followup.send(response, ephemeral=True)
         return
 
+    # Calculate estimated time
+    estimated_time = (total_members * delay) / 60  # in minutes
+    time_str = f"{estimated_time:.1f} minutes" if estimated_time >= 1 else f"{int(estimated_time * 60)} seconds"
+    
+    initial_message = (
+        f"Starting DM operation for {total_members} members.\n"
+        f"Estimated time: {time_str}\n"
+        f"Skipped bots/self: {skipped_bots}"
+    )
+    
     if hasattr(ctx, 'send'):
-        await ctx.send(
-            f"Attempting to DM {total_members} members. This may take a while due to delays.",
-            ephemeral=True
-        )
+        status_msg = await ctx.send(initial_message, ephemeral=True)
     else:
-        await ctx.followup.send(
-            f"Attempting to DM {total_members} members. This may take a while due to delays.",
-            ephemeral=True
-        )
+        status_msg = await ctx.followup.send(initial_message, ephemeral=True)
 
     sent_count = 0
-    skipped_count = 0
     failed_count = 0
-
-    for member in members_to_dm:
-        if member == bot.user:
-            if log_dms:
-                logger.info(f"Skipping self: {member.name}")
-            skipped_count += 1
-            continue
-
-        if member.bot:
-            if log_dms:
-                logger.info(f"Skipping bot: {member.name}")
-            skipped_count += 1
-            continue
-
+    progress_update_interval = max(1, total_members // 10)  # Update every 10%
+    
+    # Batch processing with progress updates
+    start_time = asyncio.get_event_loop().time()
+    
+    for i, member in enumerate(eligible_members, 1):
         try:
             await member.send(message)
             if log_dms:
-                logger.info(f"Successfully sent DM to {member.name} ({member.id})")
+                logger.info(f"✓ DM sent to {member.display_name} ({member.id})")
             sent_count += 1
         except discord.errors.Forbidden:
             if log_dms:
-                logger.warning(f"Failed to send DM to {member.name} ({member.id}): DMs are closed or blocked.")
+                logger.warning(f"✗ DM blocked by {member.display_name} ({member.id})")
             failed_count += 1
+        except discord.errors.HTTPException as e:
+            if e.status == 429:  # Rate limit
+                if log_dms:
+                    logger.warning(f"Rate limited, waiting {delay * 2} seconds...")
+                await asyncio.sleep(delay * 2)  # Extended delay for rate limits
+                # Retry once
+                try:
+                    await member.send(message)
+                    sent_count += 1
+                except:
+                    failed_count += 1
+            else:
+                failed_count += 1
+                if log_dms:
+                    logger.error(f"HTTP error for {member.display_name}: {e}")
         except Exception as e:
             if log_dms:
-                logger.error(f"Unexpected error sending DM to {member.name} ({member.id}): {e}")
+                logger.error(f"Unexpected error for {member.display_name}: {e}")
             failed_count += 1
-        finally:
+        
+        # Progress updates
+        if i % progress_update_interval == 0 or i == total_members:
+            progress = (i / total_members) * 100
+            elapsed = asyncio.get_event_loop().time() - start_time
+            remaining = (elapsed / i) * (total_members - i) if i > 0 else 0
+            
+            try:
+                if hasattr(status_msg, 'edit'):
+                    await status_msg.edit(content=(
+                        f"DM Progress: {i}/{total_members} ({progress:.1f}%)\n"
+                        f"Sent: {sent_count} | Failed: {failed_count}\n"
+                        f"Time remaining: ~{remaining/60:.1f} minutes"
+                    ))
+            except:
+                pass  # Ignore edit failures
+        
+        # Adaptive delay based on success rate
+        if i > 10 and failed_count / i > 0.5:  # High failure rate
+            await asyncio.sleep(delay * 1.5)
+        else:
             await asyncio.sleep(delay)
 
-    result_message = (
-        f"DM operation complete!\n"
-        f"Sent: {sent_count}\n"
-        f"Skipped (self/bots): {skipped_count}\n"
-        f"Failed (DMs off/error): {failed_count}\n"
-        f"Total attempted: {total_members}"
+    # Final results
+    success_rate = (sent_count / total_members * 100) if total_members > 0 else 0
+    total_time = (asyncio.get_event_loop().time() - start_time) / 60
+    
+    final_message = (
+        f"✅ DM operation complete!\n"
+        f"📊 Results: {sent_count}/{total_members} sent ({success_rate:.1f}%)\n"
+        f"⏱️ Total time: {total_time:.1f} minutes\n"
+        f"🤖 Skipped bots/self: {skipped_bots}\n"
+        f"❌ Failed/blocked: {failed_count}"
     )
 
-    if hasattr(ctx, 'send'):
-        await ctx.send(result_message, ephemeral=True)
-    else:
-        await ctx.followup.send(result_message, ephemeral=True)
+    try:
+        if hasattr(status_msg, 'edit'):
+            await status_msg.edit(content=final_message)
+        else:
+            await ctx.followup.send(final_message, ephemeral=True)
+    except:
+        # Fallback if edit fails
+        if hasattr(ctx, 'send'):
+            await ctx.send(final_message, ephemeral=True)
+        else:
+            await ctx.followup.send(final_message, ephemeral=True)
 
-    logger.info(f"DM operation finished for guild {ctx.guild.name if ctx.guild else 'DM'}.")
+    logger.info(f"DM operation completed: {sent_count}/{total_members} sent in {total_time:.1f}m")
 
 # --- CHECK FUNCTIONS ---
 async def check_allowed_users(user_id, allowed_user_ids) -> bool:
@@ -247,7 +297,16 @@ async def dmall_roles_command(ctx, target_role: discord.Role, *, message: str):
     if ctx.interaction:
         await ctx.defer(ephemeral=True)
 
-    members_to_dm = [member for member in target_role.members]
+    # Optimized member collection with status filtering
+    members_to_dm = [
+        member for member in target_role.members 
+        if not member.bot and member != bot.user and member.status != discord.Status.offline
+    ]
+    
+    if not members_to_dm:
+        await ctx.send(f"No eligible online members found in role {target_role.name}.", ephemeral=True)
+        return
+        
     await send_dm_to_members(ctx, members_to_dm, message, DELAY, LOG_DMS)
 
 @bot.hybrid_command(
@@ -269,7 +328,50 @@ async def dmall_server_command(ctx, *, message: str):
     if ctx.interaction:
         await ctx.defer(ephemeral=True)
 
-    members_to_dm = [member for member in ctx.guild.members]
+    # Optimized member collection with status and activity filtering
+    members_to_dm = [
+        member for member in ctx.guild.members 
+        if not member.bot and member != bot.user 
+        and member.status in [discord.Status.online, discord.Status.idle, discord.Status.dnd]
+    ]
+    
+    if not members_to_dm:
+        await ctx.send("No eligible online members found in server.", ephemeral=True)
+        return
+    
+    # Warn about large operations
+    if len(members_to_dm) > 50:
+        estimated_time = (len(members_to_dm) * DELAY) / 60
+        warning_msg = (
+            f"⚠️ Large DM operation: {len(members_to_dm)} members\n"
+            f"Estimated time: {estimated_time:.1f} minutes\n"
+            f"This will send {len(members_to_dm)} DMs. Continue? React with ✅ to proceed."
+        )
+        
+        if hasattr(ctx, 'send'):
+            confirm_msg = await ctx.send(warning_msg, ephemeral=True)
+        else:
+            confirm_msg = await ctx.followup.send(warning_msg, ephemeral=True)
+        
+        await confirm_msg.add_reaction("✅")
+        await confirm_msg.add_reaction("❌")
+        
+        def check(reaction, user):
+            return (user == ctx.author and 
+                   str(reaction.emoji) in ["✅", "❌"] and 
+                   reaction.message.id == confirm_msg.id)
+        
+        try:
+            reaction, user = await bot.wait_for('reaction_add', timeout=30.0, check=check)
+            if str(reaction.emoji) == "❌":
+                await confirm_msg.edit(content="DM operation cancelled.")
+                return
+        except asyncio.TimeoutError:
+            await confirm_msg.edit(content="DM operation timed out - cancelled.")
+            return
+        
+        await confirm_msg.edit(content="DM operation confirmed - starting...")
+        
     await send_dm_to_members(ctx, members_to_dm, message, DELAY, LOG_DMS)
 
 @bot.hybrid_command(

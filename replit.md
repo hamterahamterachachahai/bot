@@ -120,6 +120,13 @@ Changelog:
   * Configured mod log channel for detailed moderation logs
   * Separated command responses from log entries
   * Enhanced timeout command with comprehensive logging
+- July 06, 2025. Optimized DM system with advanced features:
+  * Real-time progress tracking with percentage updates
+  * Intelligent rate limit handling and retry logic
+  * Status-based member filtering (online/idle/dnd only)
+  * Confirmation system for large DM operations (50+ members)
+  * Adaptive delays based on success rates
+  * Enhanced error handling and detailed statistics
 ```
 
 ## User Preferences
