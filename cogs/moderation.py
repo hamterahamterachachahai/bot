@@ -13,6 +13,18 @@ class Moderation(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+    
+    async def send_mod_log(self, embed, action_type="Moderation"):
+        """Send moderation log to the configured channel if set."""
+        if hasattr(self.bot, 'mod_log_channel_id') and self.bot.mod_log_channel_id:
+            try:
+                channel = self.bot.get_channel(self.bot.mod_log_channel_id)
+                if channel:
+                    await channel.send(embed=embed)
+                else:
+                    logger.warning(f"Mod log channel {self.bot.mod_log_channel_id} not found")
+            except Exception as e:
+                logger.error(f"Failed to send mod log: {e}")
 
     async def cog_check(self, ctx):
         """Check if user has moderation permissions."""
@@ -169,7 +181,15 @@ class Moderation(commands.Cog):
             embed.add_field(name="Duration", value=f"{duration} {unit}", inline=True)
             embed.add_field(name="Reason", value=reason, inline=False)
             embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+            embed.add_field(name="Member ID", value=str(member.id), inline=True)
+            embed.add_field(name="Channel", value=ctx.channel.mention, inline=True)
+            embed.timestamp = datetime.utcnow()
+            
             await ctx.send(embed=embed)
+            
+            # Send to mod log channel if configured
+            await self.send_mod_log(embed)
+            
             logger.info(f"{ctx.author} timed out {member} for {duration} {unit}: {reason}")
         except discord.Forbidden:
             await ctx.send("I don't have permission to timeout that member.", ephemeral=True)

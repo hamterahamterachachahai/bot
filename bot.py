@@ -102,14 +102,25 @@ def validate_configuration():
         logger.warning("⚠️ Invalid ALLOWED_ROLE_IDS format, ignoring roles")
         allowed_roles = set()
     
+    # Parse mod log channel ID (optional)
+    mod_log_channel_str = os.getenv("MOD_LOG_CHANNEL_ID", "")
+    mod_log_channel_id = None
+    if mod_log_channel_str.strip():
+        try:
+            mod_log_channel_id = int(mod_log_channel_str.strip())
+        except ValueError:
+            logger.warning("⚠️ Invalid MOD_LOG_CHANNEL_ID format, moderation logging disabled")
+    
     logger.info(f"✅ Configuration loaded successfully")
     logger.info(f"📝 Authorized users: {len(allowed_users)}")
     logger.info(f"🎭 Authorized roles: {len(allowed_roles)}")
+    if mod_log_channel_id:
+        logger.info(f"📋 Mod log channel: {mod_log_channel_id}")
     
-    return token, allowed_users, delay, log_dms, allowed_roles
+    return token, allowed_users, delay, log_dms, allowed_roles, mod_log_channel_id
 
 # Load and validate configuration
-TOKEN, ALLOWED_USER_IDS, DELAY, LOG_DMS, ALLOWED_ROLE_IDS = validate_configuration()
+TOKEN, ALLOWED_USER_IDS, DELAY, LOG_DMS, ALLOWED_ROLE_IDS, MOD_LOG_CHANNEL_ID = validate_configuration()
 
 # Configure Discord Intents
 intents = discord.Intents.default()
@@ -404,6 +415,7 @@ async def on_ready():
     bot.check_allowed_roles = check_allowed_roles
     bot.check_user_or_role_allowed = check_user_or_role_allowed
     bot.perf_tracker = perf_tracker
+    bot.mod_log_channel_id = MOD_LOG_CHANNEL_ID
 
     # Load cogs
     await load_extensions()
