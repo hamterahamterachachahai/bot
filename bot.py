@@ -297,14 +297,14 @@ async def dmall_roles_command(ctx, target_role: discord.Role, *, message: str):
     if ctx.interaction:
         await ctx.defer(ephemeral=True)
 
-    # Optimized member collection with status filtering
+    # Optimized member collection - exclude bots and self
     members_to_dm = [
         member for member in target_role.members 
-        if not member.bot and member != bot.user and member.status != discord.Status.offline
+        if not member.bot and member != bot.user
     ]
     
     if not members_to_dm:
-        await ctx.send(f"No eligible online members found in role {target_role.name}.", ephemeral=True)
+        await ctx.send(f"No eligible members found in role {target_role.name}.", ephemeral=True)
         return
         
     await send_dm_to_members(ctx, members_to_dm, message, DELAY, LOG_DMS)
@@ -328,15 +328,14 @@ async def dmall_server_command(ctx, *, message: str):
     if ctx.interaction:
         await ctx.defer(ephemeral=True)
 
-    # Optimized member collection with status and activity filtering
+    # Optimized member collection - exclude bots and self
     members_to_dm = [
         member for member in ctx.guild.members 
-        if not member.bot and member != bot.user 
-        and member.status in [discord.Status.online, discord.Status.idle, discord.Status.dnd]
+        if not member.bot and member != bot.user
     ]
     
     if not members_to_dm:
-        await ctx.send("No eligible online members found in server.", ephemeral=True)
+        await ctx.send("No eligible members found in server.", ephemeral=True)
         return
     
     # Warn about large operations
