@@ -306,6 +306,10 @@ async def on_ready():
 @bot.event
 async def on_command_error(ctx, error):
     """Global error handler for commands."""
+    # Silently ignore CheckFailure errors (unauthorized users)
+    if isinstance(error, commands.CheckFailure):
+        return
+    
     if isinstance(error, commands.CommandNotFound):
         await ctx.send(
             f"Command '{ctx.invoked_with}' not found. Use `!help` to see available commands.",
@@ -341,12 +345,11 @@ async def on_command_error(ctx, error):
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     """Global slash command error handler."""
+    # Silently ignore CheckFailure errors (unauthorized users)
     if isinstance(error, app_commands.CheckFailure):
-        await interaction.response.send_message(
-            "You are not authorized to use this command.", 
-            ephemeral=True
-        )
-    elif isinstance(error, app_commands.CommandOnCooldown):
+        return
+    
+    if isinstance(error, app_commands.CommandOnCooldown):
         await interaction.response.send_message(
             f"Command is on cooldown. Try again in {error.retry_after:.2f} seconds.",
             ephemeral=True
