@@ -190,9 +190,6 @@ class Moderation(commands.Cog):
             # Send only to mod log channel
             await self.send_mod_log(log_embed)
             
-            # Send simple confirmation in command channel
-            await ctx.send(f"✅ {member.mention} has been timed out for {duration} {unit}.", ephemeral=True)
-            
             logger.info(f"{ctx.author} timed out {member} for {duration} {unit}: {reason}")
         except discord.Forbidden:
             await ctx.send("I don't have permission to timeout that member.", ephemeral=True)
