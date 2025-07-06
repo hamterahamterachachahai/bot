@@ -116,6 +116,10 @@ Changelog:
   * Enhanced logging with better error handling
   * Auto-reconnection and graceful shutdown handling
   * Added admin performance statistics command
+- July 06, 2025. Added moderation logging system:
+  * Configured mod log channel for detailed moderation logs
+  * Separated command responses from log entries
+  * Enhanced timeout command with comprehensive logging
 ```
 
 ## User Preferences

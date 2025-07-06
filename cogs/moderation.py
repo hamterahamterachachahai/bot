@@ -173,22 +173,25 @@ class Moderation(commands.Cog):
 
         try:
             await member.timeout(delta, reason=reason)
-            embed = discord.Embed(
+            
+            # Create detailed embed for mod log
+            log_embed = discord.Embed(
                 title="Member Timed Out",
                 description=f"{member.mention} has been timed out",
                 color=discord.Color.orange()
             )
-            embed.add_field(name="Duration", value=f"{duration} {unit}", inline=True)
-            embed.add_field(name="Reason", value=reason, inline=False)
-            embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
-            embed.add_field(name="Member ID", value=str(member.id), inline=True)
-            embed.add_field(name="Channel", value=ctx.channel.mention, inline=True)
-            embed.timestamp = datetime.utcnow()
+            log_embed.add_field(name="Duration", value=f"{duration} {unit}", inline=True)
+            log_embed.add_field(name="Reason", value=reason, inline=False)
+            log_embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+            log_embed.add_field(name="Member ID", value=str(member.id), inline=True)
+            log_embed.add_field(name="Channel", value=ctx.channel.mention, inline=True)
+            log_embed.timestamp = datetime.utcnow()
             
-            await ctx.send(embed=embed)
+            # Send only to mod log channel
+            await self.send_mod_log(log_embed)
             
-            # Send to mod log channel if configured
-            await self.send_mod_log(embed)
+            # Send simple confirmation in command channel
+            await ctx.send(f"✅ {member.mention} has been timed out for {duration} {unit}.", ephemeral=True)
             
             logger.info(f"{ctx.author} timed out {member} for {duration} {unit}: {reason}")
         except discord.Forbidden:
