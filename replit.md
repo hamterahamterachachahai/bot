@@ -107,7 +107,8 @@ The bot uses environment variables for configuration:
 
 ```
 Changelog:
-- July 06, 2025. Initial setup
+- July 06, 2025. Initial setup with hybrid commands and user restrictions
+- July 06, 2025. Moved all configuration to .env file for flexibility
 ```
 
 ## User Preferences
